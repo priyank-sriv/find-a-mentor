@@ -5,14 +5,15 @@ import React, { Component } from 'react';
 import classNames from 'classnames';
 import MentorsList from '../MentorsList/MentorsList';
 import Filter from '../Filter/Filter';
-import Content from '../Content/Content';
 import Logo from '../Logo';
 import SocialLinks from '../SocialLinks/SocialLinks';
+import Header from '../Header/Header';
 import Modal from '../Modal/Modal';
+import ModalContent from '../Modal/ModalContent';
 import shuffle from 'lodash/shuffle';
 import { toggle, get } from '../../favoriteManager';
-
-
+import { set } from '../../titleGenerator';
+import { report, reportPageView } from '../../ga';
 
 // const serverEndpoint = 'http://localhost:3001';
 class App extends Component {
@@ -22,8 +23,8 @@ class App extends Component {
     modal: {
       title: null,
       content: null,
-      onClose: null
-    }
+      onClose: null,
+    },
   };
 
   handleTagSelect = async ({ value: tag }) => {
@@ -31,6 +32,7 @@ class App extends Component {
     this.setState({
       tag,
     });
+    report('Filter', 'tag', tag);
   };
 
   handleCountrySelect = async ({ value: country }) => {
@@ -38,6 +40,7 @@ class App extends Component {
     this.setState({
       country,
     });
+    report('Filter', 'country', country);
   };
 
   handleNameSelect = async ({ value: name }) => {
@@ -45,14 +48,33 @@ class App extends Component {
     this.setState({
       name,
     });
+    report('Filter', 'name', 'name');
+  };
+
+  handleLanguageSelect = async ({ value: language }) => {
+    await scrollToTop();
+    this.setState({
+      language,
+    });
+    report('Filter', 'language', language);
   };
 
   filterMentors = mentor => {
-    const { tag, country, name, showFavorite, favorites } = this.state;
+    const {
+      tag,
+      country,
+      name,
+      language,
+      showFavorite,
+      favorites,
+    } = this.state;
     return (
       (!tag || mentor.tags.includes(tag)) &&
       (!country || mentor.country === country) &&
       (!name || mentor.name === name) &&
+      (!language ||
+        (mentor.spokenLanguages &&
+          mentor.spokenLanguages.includes(language))) &&
       (!showFavorite || favorites.indexOf(mentor.id) > -1)
     );
   };
@@ -68,6 +90,7 @@ class App extends Component {
     this.setState({
       showFavorite,
     });
+    report('Show Favorite', 'switch', showFavorite);
   };
 
   onFavMentor = mentor => {
@@ -75,52 +98,64 @@ class App extends Component {
     this.setState({
       favorites,
     });
+    report('Favorite');
   };
-
-  openModal = (title, content, onClose) => {
-    this.setState({
-      modal: {
-        title,
-        content,
-        onClose
-      }
-    })
-  }
 
   handleTagClick = async clickedTag => {
     await scrollToTop();
     this.setState({
       clickedTag,
     });
+    report('Filter', 'tag', clickedTag);
+  };
+
+  handleCountryClick = async clickedCountry => {
+    await scrollToTop();
+    this.setState({
+      clickedCountry,
+    });
+    report('Filter', 'country', clickedCountry);
   };
 
   getPermalinkParams() {
     const permalink = new URLSearchParams(window.location.search);
 
-    if(permalink.get('language') !== null) {
-      this.setState({ tag : permalink.get('language') });
-    }
-
-    if(permalink.get('country') !== null) {
-      this.setState({ country : permalink.get('country') });
-    }
-
-    if(permalink.get('name') !== null) {
-      this.setState({ name: permalink.get('name') });
-    }
+    this.setState({
+      tag: permalink.get('technology'),
+      country: permalink.get('country'),
+      name: permalink.get('name'),
+      language: permalink.get('language'),
+    });
   }
-  
+
+  componentWillUpdate(nextProps, nextState) {
+    set(nextState);
+  }
+
   componentDidMount() {
-    if (window && window.ga) {
-      const { location, ga } = window;
-      ga('set', 'page', location.href);
-      ga('send', 'pageview');
-    }
+    reportPageView();
     this.getPermalinkParams();
   }
 
+  handleModal = (title, content, onClose) => {
+    this.setState({
+      modal: {
+        title,
+        content,
+        onClose,
+      },
+    });
+    report('Modal', 'open', title);
+  };
+
   render() {
-    const { mentors, fieldsIsActive, modal, clickedTag } = this.state;
+    const {
+      mentors,
+      fieldsIsActive,
+      modal,
+      clickedTag,
+      clickedCountry,
+    } = this.state;
     const mentorsInList = mentors.filter(this.filterMentors);
 
     return (
@@ -128,35 +163,55 @@ class App extends Component {
         <Modal onClose={this.closeModal} title={modal.title}>
           {modal.content}
         </Modal>
+
         <main>
+          <Header />
           <aside className="sidebar">
-            <a className="logo" href="/">
-              <Logo width={110} height={50} color="#68d5b1" />
-            </a>
+            <Logo width={110} height={50} color="#68d5b1" />
             <Filter
               onTagSelected={this.handleTagSelect}
               onCountrySelected={this.handleCountrySelect}
               onNameSelected={this.handleNameSelect}
+              onLanguageSelected={this.handleLanguageSelect}
               onToggleFilter={this.toggleFields}
               onToggleSwitch={this.toggleSwitch}
               mentorCount={mentorsInList.length}
               clickedTag={clickedTag}
+              clickedCountry={clickedCountry}
             />
             <SocialLinks />
+
             <nav className="sidebar-nav">
-              <li onClick={()=>this.openModal('Cookies Policy', <Content topic="cookies-policy" />)}>
-                Cookies Policy
-              </li>
-              <li onClick={()=>this.openModal('Code of Conduct', <Content topic="code-conduct" />)}>
-                Code of Conduct
-              </li>
-              <li onClick={()=>this.openModal('Terms & Conditions', <Content topic="terms-conditions" />)}>
-                Terms & Conditions
-              </li>
-              <li onClick={()=>this.openModal('Privacy Statement', <Content topic="privacy-policy" />)}>
-                Privacy Statement
-              </li>
+              <ModalContent
+                policyTitle={'Cookies policy'}
+                content={'cookies-policy'}
+                handleModal={(title, content) =>
+                  this.handleModal(title, content)
+                }
+              />
+              <ModalContent
+                policyTitle={'Code of Conduct'}
+                content={'code-conduct'}
+                handleModal={(title, content) =>
+                  this.handleModal(title, content)
+                }
+              />
+              <ModalContent
+                policyTitle={'Terms & Conditions'}
+                content={'terms-conditions'}
+                handleModal={(title, content) =>
+                  this.handleModal(title, content)
+                }
+              />
+              <ModalContent
+                policyTitle={'Privacy Statement'}
+                content={'privacy-policy'}
+                handleModal={(title, content) =>
+                  this.handleModal(title, content)
+                }
+              />
             </nav>
+
             <a
               href="https://www.patreon.com/codingcoach_io"
               className="patreon-link"
@@ -165,9 +220,7 @@ class App extends Component {
               target="_blank"
             >
               <img
-                src={`${
-                  process.env.PUBLIC_URL
-                }/images/coding-coach-patron-button.jpg`}
+                src={`${process.env.PUBLIC_URL}/images/coding-coach-patron-button.jpg`}
                 alt="Become a Patron"
               />
             </a>
@@ -180,6 +233,7 @@ class App extends Component {
             favorites={this.state.favorites}
             onFavMentor={this.onFavMentor}
             handleTagClick={this.handleTagClick}
+            handleCountryClick={this.handleCountryClick}
           />
         </main>
       </div>
